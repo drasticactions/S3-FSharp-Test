@@ -11,10 +11,9 @@ open Entry
 
 type sqlite_master = { name: string }
 
-let createDatabase filename =
+let createDatabase (filename: string) (existingTables: bool) =
     let db = new SQLiteAsyncConnection (fun _ -> new SQLiteConnectionWithLock(new SQLitePlatformGeneric(), new SQLiteConnectionString(filename, false)))
-    let existingTables = db.QueryAsync<sqlite_master>("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name;").GetAwaiter().GetResult();
-    if not (existingTables.Any()) then 
+    if not (existingTables) then 
         db.CreateTableAsync<Entry>().GetAwaiter().GetResult() |> ignore
     db
 
