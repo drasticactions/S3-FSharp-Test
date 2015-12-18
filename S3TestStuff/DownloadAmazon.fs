@@ -63,27 +63,36 @@ let downloadLogMarkers (marker: string) (bucket: string) (prefix: string) =
 
 let downloadAndStoreLogs (marker: string) (bucket: string) (prefix: string) = 
     async {
-        let db = Database.createDatabase "new.sqlite"
         use client = new AmazonS3Client(RegionEndpoint.USEast1)
         let req = new ListObjectsRequest(BucketName = bucket, Prefix = prefix, Marker = marker)
         let! resp = client.ListObjectsAsync(req) |> Async.AwaitTask
-        let rec loop (resp: ListObjectsResponse, markers) = async {
+        let rec loop (resp: ListObjectsResponse, newField: int, markers) = async {
+            let mutable count = 0
+            let mutable newNewField = newField
+            let mutable existingTables = false
             for s3obj in resp.S3Objects do
+                if (count % 1000 = 0) then
+                    newNewField <- newField + 1
+                    existingTables <- false
                 let request = new GetObjectRequest(BucketName = "xamarin-logs", Key = s3obj.Key)
                 Console.WriteLine(request.Key)
+                Console.WriteLine(count)
                 let response = client.GetObject(request)
+                let newFilename = String.concat "" [newField.ToString(); ".sqlite";]
+                let db = Database.createDatabase newFilename existingTables
                 db.InsertAllAsync(parseLog(response)) |> Async.AwaitTask
-
+                count <- count + 1
+                existingTables <- true
             if (resp.NextMarker <> null) then
                 let m = resp.NextMarker              
                 let req = new ListObjectsRequest(BucketName = "xamarin-logs", Prefix = "xamarin-download-cf", Marker = m)
                 let! resp = client.ListObjectsAsync(req) |> Async.AwaitTask
-                return! loop(resp, m :: markers)
+                return! loop(resp, newNewField, m :: markers)
             else
                 return markers                 
         }
         
-        return! loop(resp, List.empty)
+        return! loop(resp, 0, List.empty)
     }
 
 //
